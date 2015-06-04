@@ -1,0 +1,4 @@
+cabal.sandbox.config
+out.rnn
+dist/*
+rnn.lkshf

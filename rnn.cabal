@@ -1,0 +1,69 @@
+name: rnn
+version: 0.1
+cabal-version: >=1.8
+build-type: Simple
+license: BSD3
+license-file: LICENSE
+copyright: (c) JP Moresmau
+maintainer: JP Moresmau <jp@moresmau.fr>
+stability: experimental
+synopsis: Playing with recurrent neural networks
+description:
+    Playing with recurrent neural networks
+category: AI
+author: JP Moresmau
+
+library
+    exposed-modules:
+        AI.Network.RNN
+    build-depends:
+        base >=4.2 && <5,
+        hmatrix >=0.16,
+        vector -any,
+        simple-genetic-algorithm-mr -any,
+        deepseq -any,
+        MonadRandom >=0.2,
+        text -any,
+        containers -any
+    hs-source-dirs: src
+    other-modules:
+        AI.Network.RNN.RNN
+        AI.Network.RNN.Genetic
+        AI.Network.RNN.Data
+
+executable rnn
+    main-is: main.hs
+    build-depends:
+        base >=4.2 && <5,
+        rnn -any,
+        hmatrix -any,
+        vector -any,
+        simple-genetic-algorithm-mr -any,
+        deepseq -any,
+        MonadRandom >=0.2,
+        text -any,
+        containers -any
+    hs-source-dirs: exe
+    ghc-options: -Wall -rtsopts -O2 -fprof-auto -threaded
+
+test-suite rnn-test
+    type: exitcode-stdio-1.0
+    main-is: rnn-test.hs
+    build-depends:
+        base >=4,
+        tasty >0.10,
+        tasty-hunit -any,
+        HUnit -any,
+        hmatrix -any,
+        vector -any,
+        simple-genetic-algorithm-mr -any,
+        deepseq -any,
+        MonadRandom >=0.2,
+        text -any,
+        containers -any
+    hs-source-dirs: test src
+    other-modules:
+        AI.Network.RNN.RNN
+        AI.Network.RNN.Data
+        AI.Network.RNN.Genetic
+    ghc-options: -Wall -rtsopts -threaded -O2
