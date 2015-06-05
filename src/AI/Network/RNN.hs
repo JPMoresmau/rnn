@@ -14,18 +14,20 @@
 -----------------------------------------------------------------------------
 
 module AI.Network.RNN
- ( RNNDimensions(..)
+ ( RNNEval (..)
+ , RNNDimensions(..)
  , RNNetwork
- , evalStep
  , evalSteps
- , createRandomNetwork
+ , totalDataLength
  , randNetwork
  , createNetwork
  , createNetworkFromArray
  , networkToArray
  , createNetworkFromVector
- , networkToVector
  , networkDimensions
+
+ , LSTMNetwork
+ , lstmFullSize
 
   , textToTrainData
   , dataToText
@@ -38,5 +40,7 @@ module AI.Network.RNN
 
 import AI.Network.RNN.Data
 import AI.Network.RNN.Genetic
+import AI.Network.RNN.LSTM
 import AI.Network.RNN.RNN
+import AI.Network.RNN.Types
 

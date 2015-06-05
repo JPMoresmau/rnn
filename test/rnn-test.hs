@@ -1,10 +1,13 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 
+import AI.Network.RNN.LSTM
 import AI.Network.RNN.RNN
 import AI.Network.RNN.Genetic
 import AI.Network.RNN.Data
+import AI.Network.RNN.Types
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -42,6 +45,10 @@ tests = testGroup "Tests"
             , testCase "crossNetworkFull" $ testCrossover crossNetworkFull
             , testCase "crossNetworkHalf" $ testCrossover crossNetworkHalf
         ]
+      , testGroup "LSTM" [
+            testCase "Check steps" $ checkLSTMSteps
+          , testCase "Check vector conversion" $ checkLSTMVector
+        ]
      ]
     ]
 
@@ -52,8 +59,8 @@ testTextData t = do
 
 checkSteps :: Bool -> IO ()
 checkSteps back = do
-    n<-createRandomNetwork (RNNDimensions 1 2 3 back)
-    let (n2,out)=evalStep n $ M.fromList [1]
+    (n::RNNetwork) <- evalRandIO $ randomNetwork (RNNDimensions 1 2 3 back) totalDataLength
+    let (n2,out)=evalStep n $ M.fromList [1::Double]
         (n3,out1)=evalStep n2 $ M.fromList [3]
         (n4,out2)=evalSteps n $ [M.fromList [1],M.fromList [3]]
     n3 @=? n4
@@ -61,10 +68,28 @@ checkSteps back = do
     out1 @=? (last out2)
 
 
+checkLSTMSteps :: IO ()
+checkLSTMSteps = do
+    (n::LSTMNetwork) <- evalRandIO $ randomNetwork 2 lstmFullSize
+    let (n2,out)=evalStep n $ M.fromList [1::Double,2]
+        (n3,out1)=evalStep n2 $ M.fromList [3,4]
+        (n4,out2)=evalSteps n $ [M.fromList [1,2],M.fromList [3,4]]
+    n3 @=? n4
+    out @=? (head out2)
+    out1 @=? (last out2)
+
+checkLSTMVector :: IO ()
+checkLSTMVector = do
+    (n::LSTMNetwork) <- evalRandIO $ randomNetwork 2 lstmFullSize
+    let arr = toVector n
+        n2  = fromVector 2 arr
+    n @=? n2
+
+
 checkArray :: Bool -> IO ()
 checkArray back = do
     let dim = RNNDimensions 1 2 3 back
-    n <- createRandomNetwork dim
+    (n::RNNetwork) <- evalRandIO $ randomNetwork dim totalDataLength
     let arr = networkToArray n
         n2  = createNetworkFromArray dim arr
     case n2 of
@@ -74,8 +99,8 @@ checkArray back = do
 checkVector :: Bool -> IO ()
 checkVector back = do
     let dim = RNNDimensions 1 2 3 back
-    n <- createRandomNetwork dim
-    let arr = networkToVector n
+    (n::RNNetwork) <- evalRandIO $ randomNetwork dim totalDataLength
+    let arr = toVector n
         n2  = createNetworkFromVector dim arr
     case n2 of
         Right rn2 -> n @=? rn2
@@ -87,8 +112,8 @@ testCrossover :: (RNNetwork
                        -> IO ()
 testCrossover f = do
     let dim = RNNDimensions 1 2 3 True
-    n1 <- createRandomNetwork dim
-    n2 <- createRandomNetwork dim
+    (n1::RNNetwork) <- evalRandIO $ randomNetwork dim totalDataLength
+    (n2::RNNetwork) <- evalRandIO $ randomNetwork dim totalDataLength
     rnns <- evalRandIO $ f n1 n2
     2 @=? length rnns
     (null $ filter (==n1) rnns) @? "n1 in result"

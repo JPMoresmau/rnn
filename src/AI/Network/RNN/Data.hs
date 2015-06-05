@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  AI.Network.RNN.Data
@@ -19,13 +20,12 @@ import qualified Data.Map as DM
 import Data.Maybe
 import Data.Tuple
 import Data.List
-import Data.Ord
 import Control.Monad.Random as R
 import Control.Monad
 import Numeric.LinearAlgebra.HMatrix  as M
 import Data.Foldable as F (toList)
 
-import AI.Network.RNN.RNN
+import AI.Network.RNN.Types
 
 textToTrainData :: T.Text -> ([Vector Double], [Vector Double],DM.Map Int Char)
 textToTrainData t =
@@ -58,12 +58,13 @@ randDataToText m  = (liftM T.pack) . mapM (toC . M.toList)
         toC :: RandomGen g => [Double] -> Rand g Char
         toC = R.fromList . map (\(ix,d)->(fromJust $ DM.lookup ix m,toRational d)) . zip [0..]
 
-generate :: RandomGen g => DM.Map Int Char -> Int -> Vector Double -> RNNetwork -> Rand g T.Text
+generate :: (RandomGen g,RNNEval a sz) => DM.Map Int Char -> Int -> Vector Double -> a -> Rand g T.Text
 generate m nb is rnn = do
     let (_,_,alls) = foldl' go (rnn,is,[is]) [1..nb-1]
-    randDataToText m $ alls
+    randDataToText m alls
+    -- return $ dataToText m alls
     where
-        go :: (RNNetwork,Vector Double,[Vector Double]) -> Int -> (RNNetwork,Vector Double,[Vector Double])
+        go :: (RNNEval a sz) => (a,Vector Double,[Vector Double]) -> Int -> (a,Vector Double,[Vector Double])
         go (rnn1,is1,oss) _ =
             let (rnn2,os) = evalStep rnn1 is1
             in (rnn2,os,oss ++ [os])

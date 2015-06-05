@@ -30,6 +30,9 @@ library
         AI.Network.RNN.RNN
         AI.Network.RNN.Genetic
         AI.Network.RNN.Data
+        AI.Network.RNN.LSTM
+        AI.Network.RNN.Types
+        AI.Network.RNN.Util
 
 executable rnn
     main-is: main.hs
@@ -63,7 +66,10 @@ test-suite rnn-test
         containers -any
     hs-source-dirs: test src
     other-modules:
+        AI.Network.RNN.LSTM
         AI.Network.RNN.RNN
         AI.Network.RNN.Data
         AI.Network.RNN.Genetic
+        AI.Network.RNN.Util
+        AI.Network.RNN.Types
     ghc-options: -Wall -rtsopts -threaded -O2
