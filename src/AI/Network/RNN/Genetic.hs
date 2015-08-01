@@ -18,36 +18,39 @@ module AI.Network.RNN.Genetic where
 
 import Control.Monad
 import Control.Monad.Random hiding (fromList)
+import qualified Control.Monad.Random as MR
 import Control.DeepSeq
+import Data.IORef
 import AI.GeneticAlgorithm.Simple
 import AI.Network.RNN.Types
 import Numeric.LinearAlgebra.HMatrix
 
+import Debug.Trace
 
-data RNNData a sz = (RNNEval a sz) => RNNData a [Vector Double] [Vector Double] Double
+data RNNData a sz b = (RNNEval a sz) => RNNData !a !(TrainData b sz) !Double
    -- deriving (Show,Read,Eq)
 
-instance NFData (RNNData a sz) where
-    rnf (RNNData rnn _ _ _) = rnf rnn
+instance NFData (RNNData a sz b) where
+    rnf (RNNData rnn _ _) = rnf rnn
 
 errorThreshold :: Double
 errorThreshold = 0.1
 
-instance Chromosome (RNNData a sz) where
-    crossover (RNNData rnn1 is os l) (RNNData rnn2 _ _ _) = do
+instance Chromosome (RNNData a sz b) where
+    crossover (RNNData rnn1 td l) (RNNData rnn2 _  _) = do
         rnns <- crossNetworkHalf rnn1 rnn2
-        return $ map (\r->RNNData r is os l) rnns
+        return $ map (\r->RNNData r td l) rnns
 
-    mutation (RNNData rnn1 is os l) = do
+    mutation (RNNData rnn1 td l) = do
         rnn2 <- mutateNetwork rnn1
-        return $ RNNData rnn2 is os l
+        return $ RNNData rnn2 td l
 
-    fitness (RNNData rnn1 is os l) =
-        let (_,res) = evalSteps rnn1 is
-            err a b    = (sum $ zipWith (\c d -> (c- d)**2 ) (toList a) (toList b)) / fromIntegral (size a)
-         --   z = zip os res
-         --   ok = length $ takeWhile (\(a,b)->err a b < errorThreshold) z
-        in 1 / ((sum $ zipWith err os res) / l)
+    fitness (RNNData rnn1 td l) = 1 / (cost rnn1 td)
+--        let (_,res) = evalSteps rnn1 is
+--            err a b    = (sum $ zipWith (\c d -> (c- d)**2 ) (toList a) (toList b)) / fromIntegral (size a)
+--         --   z = zip os res
+--         --   ok = length $ takeWhile (\(a,b)->err a b < errorThreshold) z
+--        in 1 / ((sum $ zipWith err os res) / l)
                 --  if ok > 0
                 --    then fromIntegral ok - (uncurry err $ head $ drop ok z)
                 --    else - (err (head os) (head res))
@@ -126,11 +129,31 @@ mixVector v1 v2 prob = do
 
 mutateNetwork :: (RandomGen g,RNNEval a sz) =>  a -> Rand g a
 mutateNetwork rnn = do
+    f <- MR.fromList [(pointMutation,1),(swapMutation,1),(insertMutation,1)]
+    f rnn
+
+pointMutation :: (RandomGen g,RNNEval a sz) =>  a -> Rand g a
+pointMutation rnn = do
     let v1 = toVector rnn
     idx <- getRandomR (0, size v1 - 1)
     dbl <- getRandom
-    let v2 = accum v1 (\_ b -> b) [(idx,dbl)]
-    -- vjoin [subVector 0 idx v1,fromList [dbl],subVector (idx+1) (size v1-idx-1) v1]
+    let v2 = accum v1 (\a _ -> a) [(idx,dbl)]
+    return $ fromVector (rnnsize rnn) v2
+
+swapMutation :: (RandomGen g,RNNEval a sz) =>  a -> Rand g a
+swapMutation rnn = do
+    let v1 = toVector rnn
+    idx1 <- getRandomR (0, size v1 - 1)
+    idx2 <- getRandomR (0, size v1 - 1)
+    let v2 = accum v1 (\a _ -> a) [(idx1,atIndex v1 idx2),(idx2,atIndex v1 idx1)]
+    return $ fromVector (rnnsize rnn) v2
+
+insertMutation :: (RandomGen g,RNNEval a sz) =>  a -> Rand g a
+insertMutation rnn = do
+    let v1 = toVector rnn
+    idx <- getRandomR (0, size v1 - 1)
+    dbl <- getRandom
+    let v2 = vjoin [subVector 0 idx v1,fromList [dbl],subVector idx (size v1 - idx -1) v1]
     return $ fromVector (rnnsize rnn) v2
 
 -- | Maximum for the fitness
@@ -139,14 +162,27 @@ maxFit = 0
 
 
 -- | Stop function
-stopf ::  RNNData a sz -> Int -> IO Bool
-stopf nd gen= do
-    print $ "Fitness (" ++ show gen ++"): " ++ show (fitness nd)
-    return $ gen >= 50 -- || fitness nd >= maxFit
+stopf :: IORef [Double] -> Int -> RNNData a sz b -> Int -> IO Bool
+stopf fitnessList maxGen nd gen = do
+    let fit = fitness nd
+    mfit <- atomicModifyIORef' fitnessList (\l->
+        let l2 = take 5 $ (fit:l)
+        in if length l2 == 5
+            then (l2, Just $ last l2)
+            else (l2, Nothing)
+        )
+
+    print $ "Fitness (" ++ show gen ++"): " ++ show fit
+    let converged = case mfit of
+                        Nothing -> False
+                        Just f  -> f >= fit
+    when converged $ print "Converged!"
+    return $ ( gen >= maxGen || converged)
+     -- || fitness nd >= maxFit
 
 -- | Build a random network data
-buildNetworkData :: (Monad m,RandomGen g,(RNNEval a sz)) =>  sz -> FullSize sz -> [Vector Double] -> [Vector Double] -> RandT g m (RNNData a sz)
-buildNetworkData dim fullSz is os = do
+buildNetworkData :: (Monad m,RandomGen g,(RNNEval a sz)) =>  TrainData b sz -> FullSize sz -> RandT g m (RNNData a sz b)
+buildNetworkData td@(TrainData is _ dim _) fullSz = do
   n <- randomNetwork dim fullSz
-  return $ RNNData n is os (fromIntegral $ length is)
+  return $ RNNData n td (fromIntegral $ length is)
 

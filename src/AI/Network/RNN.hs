@@ -28,14 +28,23 @@ module AI.Network.RNN
 
  , LSTMNetwork
  , lstmFullSize
+ , lstmList
+ , cost
+ , learnGradientDescent
 
   , textToTrainData
   , dataToText
   , generate
+  , textToTrainDataB
+  , dataToTextB
+  , generateB
 
   , RNNData(..)
   , buildNetworkData
   , stopf
+  , mutateNetwork
+
+  , TrainData(..)
  ) where
 
 import AI.Network.RNN.Data

@@ -24,7 +24,8 @@ library
         deepseq -any,
         MonadRandom >=0.2,
         text -any,
-        containers -any
+        containers -any,
+        ad, parallel
     hs-source-dirs: src
     other-modules:
         AI.Network.RNN.RNN
@@ -45,7 +46,9 @@ executable rnn
         deepseq -any,
         MonadRandom >=0.2,
         text -any,
-        containers -any
+        containers -any,
+        directory,
+        ad, parallel
     hs-source-dirs: exe
     ghc-options: -Wall -rtsopts -O2 -fprof-auto -threaded
 
@@ -56,14 +59,17 @@ test-suite rnn-test
         base >=4,
         tasty >0.10,
         tasty-hunit -any,
+        tasty-quickcheck -any,
         HUnit -any,
+        QuickCheck -any,
         hmatrix -any,
         vector -any,
         simple-genetic-algorithm-mr -any,
         deepseq -any,
         MonadRandom >=0.2,
         text -any,
-        containers -any
+        containers -any,
+        ad, parallel
     hs-source-dirs: test src
     other-modules:
         AI.Network.RNN.LSTM

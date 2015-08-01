@@ -31,7 +31,15 @@ class (NFData a) => RNNEval a sz | a -> sz where
 type FullSize sz = sz -> Int
 
 evalSteps :: (Traversable t,RNNEval a sz) => a -> t (Vector Double) -> (a,t (Vector Double))
-evalSteps rnn = {-# SCC "evalSteps" #-} mapAccumL evalStep rnn
+evalSteps rnn = mapAccumL evalStep rnn
+
+cost :: (RNNEval a sz) => a -> TrainData b sz -> Double
+cost rnn td =
+    let (_,res) = evalSteps rnn $ tdInputs td
+    in ((sum $ zipWith err (tdOutputs td) res))
+    where
+      err ::  Vector Double -> Vector Double -> Double
+      err a b    = (sum $ zipWith (\c d -> (c- d)**2 ) (toList a) (toList b)) / fromIntegral (size a)
 
 randomNetwork
     :: (RNNEval a sz,Monad m,RandomGen g)
@@ -40,4 +48,10 @@ randomNetwork
     -> RandT g m a
 randomNetwork sz fsz = do
     s <- getRandom
-    return $ fromVector sz $ randomVector s Gaussian $ fsz sz
+    return $ fromVector sz $ randomVector s Uniform $ fsz sz
+
+data TrainData a sz = TrainData
+    { tdInputs  :: !([Vector Double])
+    , tdOutputs :: !([Vector Double])
+    , tdRecSize :: !sz
+    , tdData    :: a}

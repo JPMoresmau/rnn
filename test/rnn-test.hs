@@ -8,21 +8,37 @@ import AI.Network.RNN.RNN
 import AI.Network.RNN.Genetic
 import AI.Network.RNN.Data
 import AI.Network.RNN.Types
+import AI.Network.RNN.Util
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
 import qualified Numeric.LinearAlgebra.HMatrix as M
 
 import Control.Monad.Random
 import qualified Data.Text as T
+import qualified Data.Set as DS
+
+import Data.Char
+import Numeric
 
 main :: IO()
 main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Tests"
-    [ testGroup "RNN" [
+    [  testGroup "Utils" [
+          testProperty "Matrix/vector product" prop_product
+        , testCase "takes" $ do
+            let l=[1,2,3,4,5,6]
+            [[1],[2,3],[4,5,6]] @=? takes [1,2,3] l
+            [[],[],[]] @=? takes [1,2,3] ([]::[Int])
+        , testProperty "takes keep all data in order" prop_takes_concat
+        , testProperty "takes has proper number of lists" prop_takes_length
+        , testProperty "binary digits" prop_binary_digits
+       ]
+     , testGroup "RNN" [
         testCase "Check Steps without Back" $ checkSteps False
         , testCase "Check Steps with Back" $ checkSteps True
         , testCase "Check array conversion without Back" $ checkArray False
@@ -34,6 +50,9 @@ tests = testGroup "Tests"
         testCase "Text" $ do
             testTextData "hello"
             testTextData "hello world!"
+        , testCase "TextBinary" $ do
+            testTextDataB "hello"
+            testTextDataB "hello world!"
      , testGroup "Genetic" [
             testCase "MixVector" $ do
                 let v1 = M.fromList [1,1,1,1]
@@ -48,14 +67,54 @@ tests = testGroup "Tests"
       , testGroup "LSTM" [
             testCase "Check steps" $ checkLSTMSteps
           , testCase "Check vector conversion" $ checkLSTMVector
+          , testProperty "list and vector match" prop_lstm_step
         ]
      ]
     ]
 
+prop_product :: MatrixVector -> Bool
+prop_product (MatrixVector sz ms vs) = (listMProd ms vs) == (M.toList $ (M.matrix sz ms) M.#> (M.vector vs))
+
+data MatrixVector = MatrixVector Int [Double] [Double]
+    deriving (Show,Read,Eq,Ord)
+
+instance Arbitrary MatrixVector where
+    arbitrary = do
+        Positive rows<-arbitrary
+        Positive cols<-arbitrary
+        ms <- vector (rows*cols)
+        vs <- vector cols
+        return $ MatrixVector cols ms vs
+
+prop_takes_concat ::  [Char] -> [Positive Int] -> Bool
+prop_takes_concat xs ps = let
+    idxs = map getPositive ps
+    tot = sum idxs
+    in (concat $ takes idxs xs) == (take tot xs)
+
+prop_takes_length ::  [Char] -> [Positive Int] -> Bool
+prop_takes_length xs ps = let
+    idxs = map getPositive ps
+    in (length $ takes idxs xs) == (length ps)
+
+prop_binary_digits :: Positive Int -> Bool
+prop_binary_digits (Positive a) = (binaryDigits a) == (length $ showIntAtBase 2 intToDigit a "")
+
 testTextData :: T.Text -> IO()
 testTextData t = do
-    let (is,_,m) = textToTrainData t
+    let (TrainData isSt is sz m) = textToTrainData t
+    let charSet = T.foldl (flip DS.insert) DS.empty t
+    DS.size charSet @=? sz
     t @=? dataToText m is
+    (T.init t) @=? (dataToText m $ tail isSt)
+
+testTextDataB :: T.Text -> IO()
+testTextDataB t = do
+    let (TrainData isSt is sz m) = textToTrainDataB t
+    let charSet = T.foldl (flip DS.insert) DS.empty t
+    (binaryDigits $ DS.size charSet) @=? sz
+    t @=? dataToTextB m is
+    (T.init t) @=? (dataToTextB m $ tail isSt)
 
 checkSteps :: Bool -> IO ()
 checkSteps back = do
@@ -85,6 +144,19 @@ checkLSTMVector = do
         n2  = fromVector 2 arr
     n @=? n2
 
+prop_lstm_step :: LSTMData -> Bool
+prop_lstm_step (LSTMData n is)= (snd $ evalStep n (M.fromList is)) == (M.fromList $ snd $ lstmList 10 (M.toList $ toVector n) is)
+
+data LSTMData = LSTMData LSTMNetwork [Double]
+    deriving Show
+
+instance Arbitrary LSTMData where
+    arbitrary = do
+        let sz=10
+        ls <- vector (lstmFullSize sz)
+        is <- vector sz
+        let n = fromVector sz $ M.fromList ls
+        return $ LSTMData n is
 
 checkArray :: Bool -> IO ()
 checkArray back = do
