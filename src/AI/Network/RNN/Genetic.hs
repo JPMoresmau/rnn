@@ -10,7 +10,7 @@
 -- Stability   :  experimental
 -- Portability :
 --
--- |
+-- | Code for genetic evolution of a network
 --
 -----------------------------------------------------------------------------
 
@@ -25,18 +25,23 @@ import AI.GeneticAlgorithm.Simple
 import AI.Network.RNN.Types
 import Numeric.LinearAlgebra.HMatrix
 
-import Debug.Trace
+-- import Debug.Trace
 
+-- | Keep all relevant data together
 data RNNData a sz b = (RNNEval a sz) => RNNData !a !(TrainData b sz) !Double
    -- deriving (Show,Read,Eq)
 
+-- | evaluate network
 instance NFData (RNNData a sz b) where
     rnf (RNNData rnn _ _) = rnf rnn
 
+-- | Error threshold (not currently used)
 errorThreshold :: Double
 errorThreshold = 0.1
 
+-- | Chromosome instance
 instance Chromosome (RNNData a sz b) where
+    -- | cross network by taking half the values of one and half of the other
     crossover (RNNData rnn1 td l) (RNNData rnn2 _  _) = do
         rnns <- crossNetworkHalf rnn1 rnn2
         return $ map (\r->RNNData r td l) rnns
@@ -44,17 +49,10 @@ instance Chromosome (RNNData a sz b) where
     mutation (RNNData rnn1 td l) = do
         rnn2 <- mutateNetwork rnn1
         return $ RNNData rnn2 td l
+    -- | fitness is "higher is better", inverse of cost
+    fitness (RNNData rnn1 td _) = 1 / cost rnn1 td
 
-    fitness (RNNData rnn1 td l) = 1 / (cost rnn1 td)
---        let (_,res) = evalSteps rnn1 is
---            err a b    = (sum $ zipWith (\c d -> (c- d)**2 ) (toList a) (toList b)) / fromIntegral (size a)
---         --   z = zip os res
---         --   ok = length $ takeWhile (\(a,b)->err a b < errorThreshold) z
---        in 1 / ((sum $ zipWith err os res) / l)
-                --  if ok > 0
-                --    then fromIntegral ok - (uncurry err $ head $ drop ok z)
-                --    else - (err (head os) (head res))
-
+-- | Cross 2 networks by taking the first half of one, the second half of the other (not currently used)
 crossNetworkFull :: (RandomGen g,RNNEval a sz) =>  a -> a -> Rand g [a]
 crossNetworkFull rnn1 rnn2 = do
     let v1 = toVector rnn1
@@ -63,8 +61,9 @@ crossNetworkFull rnn1 rnn2 = do
     let (v3,v4) = crossVector v1 v2 idx
         rnn3 = fromVector (rnnsize rnn1) v3
         rnn4 = fromVector (rnnsize rnn1) v4
-    return $ [rnn3,rnn4]
+    return [rnn3,rnn4]
 
+-- | cross 2 networks by taking half the values of one and half of the other
 crossNetworkHalf :: (RandomGen g,RNNEval a sz) =>  a -> a -> Rand g [a]
 crossNetworkHalf rnn1 rnn2 = do
     let v1 = toVector rnn1
@@ -73,8 +72,9 @@ crossNetworkHalf rnn1 rnn2 = do
     let
         rnn3 = fromVector (rnnsize rnn1) v3
         rnn4 = fromVector (rnnsize rnn1) v4
-    return $ [rnn3,rnn4]
+    return [rnn3,rnn4]
 
+-- | Cross networks by taking the average of their values (not currently used)
 avgNetwork :: (RandomGen g,RNNEval a sz) =>  a -> a -> Rand g [a]
 avgNetwork rnn1 rnn2 = do
     let v1 = toVector rnn1
@@ -84,89 +84,77 @@ avgNetwork rnn1 rnn2 = do
       --  rnn4 = fromVector (rnnsize rnn1) v4 of
       --      Right n -> n
       --      Left e  -> error e
-    return $ [rnn3]
-
---crossNetwork :: RandomGen g =>  RNNetwork -> RNNetwork -> Rand g [RNNetwork]
---crossNetwork rnn1 rnn2 = {-# SCC "crossNetwork" #-} do
---    let (in1,in2) = crossMatrixEq (rnnMIn rnn1) (rnnMIn rnn2)
---        (m1,m2) = crossMatrixEq (rnnM rnn1) (rnnM rnn2)
---        (out1,out2) = crossMatrixEq (rnnMOut rnn1) (rnnMOut rnn2)
---        (bck1,bck2) = case (rnnMBack rnn1,rnnMBack rnn2) of
---            (Just m1,Just m2)-> let (m12,m22) = crossMatrixEq m1 m2 in (Just m12,Just m22)
---            _ -> (Nothing,Nothing)
---        (st1,st2) = crossVectorEq (rnnState rnn1) (rnnState rnn2)
---        (os1,os2) = crossVectorEq (rnnOutput rnn1) (rnnOutput rnn2)
---    return [RNNetwork (rnnDimensions rnn1) in1 m2 out1 bck1 st1 os1
---           ,RNNetwork (rnnDimensions rnn1) in1 m2 out2 bck2 st2 os2
---           ]
-
+    return [rnn3]
 
 
 crossMatrixEq :: Matrix Double -> Matrix Double -> (Matrix Double,Matrix Double)
 crossMatrixEq m1 m2 =
-    let row      = upperHalf $ rows m1
-        col      = upperHalf $ cols m1
-        [[a1,a2],[a3,a4]] = toBlocksEvery row col m1
-        [[b1,b2],[b3,b4]] = toBlocksEvery row col m2
+    let row1      = upperHalf $ rows m1
+        col1      = upperHalf $ cols m1
+        [[a1,a2],[a3,a4]] = toBlocksEvery row1 col1 m1
+        [[b1,b2],[b3,b4]] = toBlocksEvery row1 col1 m2
     in (fromBlocks [[a1,b2],[a3,b4]],fromBlocks [[b1,a2],[b3,a4]])
     where
-        upperHalf a = (if odd a then (a+1) else a) `div` 2
+        upperHalf a = (if odd a then a+1 else a) `div` 2
 
 crossVectorEq :: Vector Double -> Vector Double -> (Vector Double,Vector Double)
 crossVectorEq v1 v2 = crossVector v1 v2 (size v1 `div` 2)
 
+-- | Cross vector at the given point
 crossVector :: Vector Double -> Vector Double -> Int -> (Vector Double,Vector Double)
 crossVector v1 v2 idx = (vjoin [subVector 0 idx v1,subVector idx (size v2 - idx) v2],
                     vjoin [subVector 0 idx v2,subVector idx (size v1-idx) v1])
 
+-- | Mix vector values given a probability to take a value from the first one and not the second
 mixVector :: (Monad m,RandomGen g) =>  Vector Double -> Vector Double -> Double -> RandT g m (Vector Double,Vector Double)
 mixVector v1 v2 prob = do
-    rs <- sequence (replicate (size v1) (getRandomR (0, 1)))
+    rs <- replicateM (size v1) (getRandomR (0, 1))
     let (l1,l2) = unzip $ map swapR $ zip3 (toList v1) (toList v2) rs
     return (fromList l1,fromList l2)
     where
         swapR (a,b,idx) = if idx <= prob then (a,b) else (b,a)
 
+-- | network mutation: select randomly from several mutation algorithms
 mutateNetwork :: (RandomGen g,RNNEval a sz) =>  a -> Rand g a
 mutateNetwork rnn = do
     f <- MR.fromList [(pointMutation,1),(swapMutation,1),(insertMutation,1)]
     f rnn
 
+-- | Mutate a single value of the vector, taking a random value
 pointMutation :: (RandomGen g,RNNEval a sz) =>  a -> Rand g a
 pointMutation rnn = do
     let v1 = toVector rnn
     idx <- getRandomR (0, size v1 - 1)
-    dbl <- getRandom
-    let v2 = accum v1 (\a _ -> a) [(idx,dbl)]
+    dbl <- getRandomR (0,1)
+    let v2 = accum v1 const [(idx,dbl)]
     return $ fromVector (rnnsize rnn) v2
 
+-- | Swap two values in the vector
 swapMutation :: (RandomGen g,RNNEval a sz) =>  a -> Rand g a
 swapMutation rnn = do
     let v1 = toVector rnn
     idx1 <- getRandomR (0, size v1 - 1)
     idx2 <- getRandomR (0, size v1 - 1)
-    let v2 = accum v1 (\a _ -> a) [(idx1,atIndex v1 idx2),(idx2,atIndex v1 idx1)]
+    let v2 = accum v1 const [(idx1,atIndex v1 idx2),(idx2,atIndex v1 idx1)]
     return $ fromVector (rnnsize rnn) v2
 
+-- | Insert a random value at a random point in the vector, discarding the last value
 insertMutation :: (RandomGen g,RNNEval a sz) =>  a -> Rand g a
 insertMutation rnn = do
     let v1 = toVector rnn
     idx <- getRandomR (0, size v1 - 1)
-    dbl <- getRandom
+    dbl <- getRandomR (0,1)
     let v2 = vjoin [subVector 0 idx v1,fromList [dbl],subVector idx (size v1 - idx -1) v1]
     return $ fromVector (rnnsize rnn) v2
 
--- | Maximum for the fitness
-maxFit :: Double
-maxFit = 0
-
 
 -- | Stop function
+-- we take a list of past fitnesses and stop when the fitness 5 generations ago was not worse that the current one
 stopf :: IORef [Double] -> Int -> RNNData a sz b -> Int -> IO Bool
 stopf fitnessList maxGen nd gen = do
     let fit = fitness nd
     mfit <- atomicModifyIORef' fitnessList (\l->
-        let l2 = take 5 $ (fit:l)
+        let l2 = take 5 (fit:l)
         in if length l2 == 5
             then (l2, Just $ last l2)
             else (l2, Nothing)
@@ -177,8 +165,8 @@ stopf fitnessList maxGen nd gen = do
                         Nothing -> False
                         Just f  -> f >= fit
     when converged $ print "Converged!"
-    return $ ( gen >= maxGen || converged)
-     -- || fitness nd >= maxFit
+    return ( gen >= maxGen || converged)
+
 
 -- | Build a random network data
 buildNetworkData :: (Monad m,RandomGen g,(RNNEval a sz)) =>  TrainData b sz -> FullSize sz -> RandT g m (RNNData a sz b)

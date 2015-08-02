@@ -1,33 +1,27 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+-- | Main entry point for executable, mainly for tests
 module Main (main) where
 
 import AI.Network.RNN
 import AI.GeneticAlgorithm.Simple
-import qualified Data.Map as DM
 import Control.Monad
 import Control.Monad.Random hiding (fromList)
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
-import Numeric.LinearAlgebra.HMatrix (Vector,size,toList,fromList)
 import Data.IORef
-import Data.List
 import System.Directory
-import Debug.Trace
-import Control.DeepSeq
+--import Debug.Trace
 import System.Environment
 
--- import Numeric.AD
--- import Numeric.AD.Jet
--- import Numeric.AD.Mode.Sparse
+import Numeric.LinearAlgebra.HMatrix
 
 main :: IO()
 main = do
     -- txt <- liftM (T.take 100) $ T.readFile "data/tinyshakespeare.txt"
     let txt= "hello world!"
-        trainData = textToTrainData txt
+        trainData = train txt
         fn = "lstm.learn1.helloworld"
-        generateLength = (min 50 (T.length txt))
+        generateLength = min 50 (T.length txt)
     ex <- doesFileExist fn
     args <- getArgs
     rnn<-case args of
@@ -51,6 +45,7 @@ main = do
         _ -> error "rnn gradient | generic"
     writeFile fn $ show rnn
     where
+      (train, gener) = (textToTrainData,generate)
       genStep maxGen = maxGen `div` 10
       gradient (RNNData r td _) generateLength maxGen = learnGradientDescent r td $ test generateLength maxGen
       genetic r generateLength maxGen = do
@@ -58,16 +53,29 @@ main = do
         (RNNData rnn _ _) <- runGAIO 64 0.1 r $ stopf2 generateLength maxGen fitnessList
         return rnn
       test generateLength maxGen rnn td gen= do
-        when ((mod gen (genStep maxGen)) == 0) $ do
+        when (mod gen (genStep maxGen) == 0) $ do
             let c= cost rnn td
             print (show gen ++ ":" ++ show c)
-            t <- evalRandIO $ generate (tdData td) generateLength (size $ head $ tdInputs td) rnn
+            t <- evalRandIO $ gener (tdData td) generateLength (size $ head $ tdInputs td) rnn
             print t
         return $ gen < maxGen
       stopf2 generateLength maxGen fs rd@(RNNData rnn td _) gen = do
         _ <- test generateLength maxGen rnn td gen
         stopf fs maxGen rd gen
 
+-- | Build LSTM network
+buildTD ::(Monad m,RandomGen g) =>  TrainData a Int -> RandT g m (RNNData LSTMNetwork Int a)
+buildTD td = buildNetworkData td lstmFullSize
+
+-- | Build from existing data for genetic algorithm, to restart from where we were
+buildExisting :: (Monad m,RandomGen g) =>  LSTMNetwork -> TrainData a Int -> RandT g m (RNNData LSTMNetwork Int a)
+buildExisting rnn1 td@(TrainData is _ _ _) = do
+  g <- getSplit
+  let rnn2 = evalRand (mutateNetwork rnn1) g
+  return $ RNNData rnn2 td (fromIntegral $ length is)
+
+-- DRAGONS
+--
 --main :: IO()
 --main = do
 --   -- txt <- T.readFile "data/tinyshakespeare.txt"
@@ -218,11 +226,3 @@ main = do
 --build ::(Monad m,RandomGen g) =>  TrainData a Int  -> RandT g m (RNNData LSTMNetwork Int)
 --build sz td = buildNetworkData sz lstmFullSize is os
 
-buildTD ::(Monad m,RandomGen g) =>  TrainData a Int -> RandT g m (RNNData LSTMNetwork Int a)
-buildTD td = buildNetworkData td lstmFullSize
-
-buildExisting :: (Monad m,RandomGen g) =>  LSTMNetwork -> TrainData a Int -> RandT g m (RNNData LSTMNetwork Int a)
-buildExisting rnn1 td@(TrainData is _ _ _) = do
-  g <- getSplit
-  let rnn2 = evalRand (mutateNetwork rnn1) g
-  return $ RNNData rnn2 td (fromIntegral $ length is)

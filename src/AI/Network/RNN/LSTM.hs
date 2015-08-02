@@ -13,14 +13,14 @@
 -- Stability   :  experimental
 -- Portability :
 --
--- |
+-- | Long Short Term Memory networks
 --
 -----------------------------------------------------------------------------
 
 module AI.Network.RNN.LSTM where
 
 import Control.DeepSeq
-import Control.Monad.Random hiding (fromList)
+
 
 import Data.List
 
@@ -28,13 +28,11 @@ import Numeric.LinearAlgebra.HMatrix
 
 import AI.Network.RNN.Types
 import AI.Network.RNN.Util
-import Debug.Trace
-
+-- import Debug.Trace
 
 import Numeric.AD
-import Numeric.AD.Mode.Reverse
-import Numeric.AD.Newton
 
+-- | The LSTM data type, with the different weights and states
 data LSTMNetwork = LSTMNetwork
     { lstmSize :: !Int
     , lstmWeightsW :: !(Matrix Double)
@@ -44,16 +42,18 @@ data LSTMNetwork = LSTMNetwork
     , lstmOutput :: !(Vector Double)
     } deriving (Show, Read, Eq)
 
+-- | Force evaluation instance
 instance NFData LSTMNetwork where
     rnf LSTMNetwork{..} = rnf (lstmSize,lstmWeightsW,lstmWeightsU,lstmBias,lstmState,lstmOutput)
 
+-- | Implement the network evaluation and conversions functions
 instance RNNEval LSTMNetwork Int where
     evalStep n@LSTMNetwork{..} is =
         let z = (lstmWeightsW #> is) + (lstmWeightsU #> lstmOutput) + lstmBias
             [i,f,c1,o] = takesV (replicate 4 lstmSize) z
             c2 = cmap tanh c1
-            ns = (c2 * (cmap sigmoid i)) + ((cmap sigmoid f) * lstmState)
-            no = (cmap sigmoid o) * (cmap tanh ns)
+            ns = (c2 * cmap sigmoid i) + (cmap sigmoid f * lstmState)
+            no = cmap sigmoid o * cmap tanh ns
         in force (n{lstmState=ns,lstmOutput=no},no)
     fromVector sz vs =
         let
@@ -66,37 +66,40 @@ instance RNNEval LSTMNetwork Int where
         [ flatten lstmWeightsW, flatten lstmWeightsU, lstmBias, lstmState, lstmOutput]
     rnnsize = lstmSize
 
+-- | Full size of a network
 lstmFullSize :: FullSize Int
 lstmFullSize sz = (sz * sz) * 8 + sz* 4 + sz + sz
 
--- randomLSTM :: (Monad m,RandomGen g) => Int -> RandT g m LSTMNetwork
--- randomLSTM sz = createRandomNetwork sz (fullSize sz)
-
+-- | Implementation of the LSTM evaluation step without explicit matrices and vectors
+-- just using lists, so we can use AD on it
 lstmList :: (Num b,Floating b) => Int -> [b] -> [b] -> ([b],[b])
 lstmList sz lstm is = let
     msize = sz * sz
     [mW,mU,vB,vS,vO] = takes [msize * 4,msize * 4, sz * 4,sz,sz] lstm
-    z = zipWith3 (\a b c->a+b+c) (listMProd mW is) (listMProd mU vO) vB
+    z = parZipWith3 (\a b c->a+b+c) (listMProd mW is) (listMProd mU vO) vB
     [i,f,c1,o] = takes (replicate 4 sz) z
     c2 = map tanh c1
     ns = zipWith (+) (zipWith (*) c2 (map sigmoid i)) (zipWith (*) (map sigmoid f) vS)
     no = zipWith (*) (map sigmoid o) (map tanh ns)
     in (mW++mU++vB++ns++no,no)
 
+
+-- | Cost calculation using list representation for AD
 cost' :: (Num b,Floating b,Fractional b,Show b) => Int -> b -> [[b]] -> [[b]] -> [b] -> b
 cost' sz l is os lstm = let
     (_,res) = mapAccumL (lstmList sz) lstm is
 --    in - (calcMeanList $ three (last res) (last os))
 --    in - (calcMeanList $ concat $ zipWith (three) res os)
-    in ((sum $ zipWith err os res))
+    in sum $ zipWith (err l) os res
     where
-      err :: (Num b,Floating b) => [b] -> [b] -> b
-      err a b    = (sum $ zipWith (\c d -> (c- d)**2 ) a b) / fromIntegral (length a)
-      one i o = zipWith (*) o (map log i)
-      two i o = zipWith (*) (map (\x->1 - x) o) (map (\x->1 - log x) i)
-      three i o= zipWith (+) (one i o) (two i o)
+      err :: (Num b,Floating b) => b -> [b] -> [b] -> b
+      err le a b  = sum (zipWith (\c d -> (c- d)**2 ) a b) / le
+--      one i o = zipWith (*) o (map log i)
+--      two i o = zipWith (*) (map (\x->1 - x) o) (map (\x->1 - log x) i)
+--      three i o= zipWith (+) (one i o) (two i o)
 
-
+-- | Gradent decent learning
+-- The third parameter is a call back function to monitor progress and stop the learning process if needed
 learnGradientDescent :: (Monad m) => LSTMNetwork -> TrainData a Int -> (LSTMNetwork -> TrainData a Int -> Int -> m Bool) -> m LSTMNetwork
 learnGradientDescent lstm td progressF = go (toList $ toVector lstm) 0
     where
@@ -106,31 +109,11 @@ learnGradientDescent lstm td progressF = go (toList $ toVector lstm) 0
         if cont
             then do
                 let
-                    gs= gf ls
+                    gs= gf ls -- gradients using AD
                     ls2 = zipWith (\o g->o-g*0.1) ls gs
                 go ls2 (gen+1)
             else return rnn
-      le = fromIntegral $ length (tdInputs td)
-      -- ale :: forall s. Reverse s Double
-      -- ale = auto le
+      le = fromIntegral $ tdRecSize td
       lis = map toList (tdInputs td)
-      --alis = map (map auto) lis
       los = map toList (tdOutputs td)
-      -- alos = map (map auto) los
       gf = grad (cost' (tdRecSize td) (auto le) (map (map auto) lis) (map (map auto) los))
-
---learnGradientDescent :: (Monad m) => LSTMNetwork -> TrainData a -> (LSTMNetwork -> TrainData a -> Int -> m Bool) -> m LSTMNetwork
---learnGradientDescent lstm td progressF = do
---    let ls=toList $ toVector lstm
---        res = gradientDescent (cost' (tdRecSize td) (auto le) (map (map auto) lis) (map (map auto) los)) ls
---    go res 0
---    where
---      go (ls:ls2) gen = do
---         let rnn::LSTMNetwork = fromVector (tdRecSize td) (fromList ls)
---         cont <- progressF rnn td gen
---         if cont
---            then go ls2 (gen+1)
---            else return rnn
---      le = fromIntegral $ length (tdInputs td)
---      lis = map toList (tdInputs td)
---      los = map toList (tdOutputs td)

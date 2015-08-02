@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards, PatternGuards, BangPatterns #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  AI.Network.RNN
@@ -9,7 +8,7 @@
 -- Stability   :  experimental
 -- Portability :
 --
--- |
+-- | Library API
 --
 -----------------------------------------------------------------------------
 
@@ -25,19 +24,19 @@ module AI.Network.RNN
  , networkToArray
  , createNetworkFromVector
  , networkDimensions
+ , cost
 
  , LSTMNetwork
  , lstmFullSize
  , lstmList
- , cost
  , learnGradientDescent
 
   , textToTrainData
   , dataToText
   , generate
-  , textToTrainDataB
-  , dataToTextB
-  , generateB
+  , textToTrainDataS
+  , dataToTextS
+  , generateS
 
   , RNNData(..)
   , buildNetworkData

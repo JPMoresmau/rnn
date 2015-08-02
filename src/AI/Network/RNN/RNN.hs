@@ -11,17 +11,13 @@
 -- Stability   :  experimental
 -- Portability :
 --
--- |
+-- | Recurrent neural network
 --
 -----------------------------------------------------------------------------
 
 module AI.Network.RNN.RNN  where
 
-import Data.List
--- import Data.Traversable
--- import qualified Data.Vector as V
 import Numeric.LinearAlgebra.HMatrix hiding ((|>))
---import System.Random.MWC
 import Control.DeepSeq
 import Control.Monad.Random hiding (fromList)
 
@@ -82,9 +78,9 @@ createNetworkFromArray dim@RNNDimensions{..} v =
 
 networkToArray :: RNNetwork -> [Double]
 networkToArray RNNetwork{..} =
-       (concat $ toLists rnnMIn)
-    ++ (concat $ toLists rnnM)
-    ++ (concat $ toLists rnnMOut)
+       concat (toLists rnnMIn)
+    ++ concat (toLists rnnM)
+    ++ concat (toLists rnnMOut)
     ++ (case rnnMBack of
             Just b -> concat $ toLists b
             _      -> [])
@@ -99,7 +95,7 @@ createNetworkFromVector dim@RNNDimensions{..} v =
     let
         enough = size v >= totalDataLength dim
     in if enough
-        then {-# SCC "createNetworkFromVector" #-} Right $ fromVector dim $ v
+        then {-# SCC "createNetworkFromVector" #-} Right $ fromVector dim v
         else Left $ "Not enough data in vector (needs at least"++ show (totalDataLength dim) ++")"
 
 
@@ -147,14 +143,14 @@ checkNetworkDimensions
     -> Maybe (Matrix Double)
     -> Vector Double
     -> [String]
-checkNetworkDimensions dim@RNNDimensions{..} mIn m mOut mmback st = checkDimensions dim ++ (collectErrors $
+checkNetworkDimensions dim@RNNDimensions{..} mIn m mOut mmback st = checkDimensions dim ++ collectErrors (
     [(cols mIn /= rnndInput, "input matrix column count doesn't match input neurons count")
     ,(rows mIn /= rnndInternal, "input matrix row count doesn't match internal neurons count")
     ,(cols m /= rnndInternal, "internal matrix column count doesn't match internal neurons count")
     ,(rows m /= rnndInternal, "internal matrix row count doesn't match internal neurons count")
     ,(cols mOut /= (rnndInput + rnndInternal), "internal matrix column count doesn't match input + internal neurons count")
     ,(rows mOut /= rnndOutput, "output matrix row count doesn't match output neurons count")
-    ,((size st) /= rnndInternal,"internal state length doesn't match internal neurons count")]
+    ,(size st /= rnndInternal,"internal state length doesn't match internal neurons count")]
     ++(case mmback of
         Nothing -> []
         Just mback ->
@@ -169,7 +165,6 @@ instance RNNEval RNNetwork RNNDimensions where
             sum2 = case rnnMBack of
                 Just mback -> sum1 + (mback #> rnnOutput)
                 _          -> sum1
-            f  = tanh
             s2 = cmap tanh sum2
             out = cmap sigmoid (rnnMOut #> vjoin [iv,s2])
         in (rnn{rnnState=s2,rnnOutput=out},out)
