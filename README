@@ -1,0 +1,6 @@
+This little project is just me playing around with the concepts of Recurrent Neural Networks and Long-Short Term Memory networks.
+
+You can find the code mainly in the LSTM and RNN modules, with the Types module defining the types and the Utils module some utility functions.
+There is also a genetic algorithm module built on top of simple-genetic-algorithm-mr, and some text encoding/decoding functions in Data.
+
+The main module shows the library being exercised to generate "Hello World!", you can have a look for inspiration. Any feed back welcome!
