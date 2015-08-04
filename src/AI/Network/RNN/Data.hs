@@ -32,7 +32,7 @@ import AI.Network.RNN.Util
 
 
 -- | Transform text into training data
--- the encoding of each Char is "one of v": each step is a vector of n values, n being the number of characters, and each character
+-- the encoding of each Char is "one of k": each step is a vector of n values, n being the number of characters, and each character
 -- is encoded as one value in the vector being 1
 textToTrainData :: T.Text -> TrainData (DM.Map Int Char) Int
 textToTrainData t =
@@ -54,7 +54,7 @@ textToTrainData t =
         toArr :: Int -> Int -> Vector Double
         toArr sz idx = M.fromList $ replicate idx 0 ++ [1] ++ replicate (sz-idx-1) 0
 
--- | Decode the data from the one of v encoding
+-- | Decode the data from the one of k encoding
 dataToText :: DM.Map Int Char -> [Vector Double] -> T.Text
 dataToText m  = T.pack . F.toList . fmap toC
     where
@@ -74,7 +74,7 @@ randDataToText m  = liftM T.pack . mapM (toC . M.toList)
             R.fromList m2
             --return $ fst $ last $ sortBy (comparing snd) m3
 
--- | Generate text using one of v encoding and a given network
+-- | Generate text using one of k encoding and a given network
 generate :: (RandomGen g,RNNEval a sz)
     => DM.Map Int Char -- ^ Character map
     -> Int  -- ^ Number of characters to generate

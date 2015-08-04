@@ -27,13 +27,12 @@ main = do
     rnn<-case args of
         ("gradient":mg:_) -> do
             let maxGen = read mg
-            rd <- if ex
-                then do
-                  r <- read <$> readFile fn
-                  return $ RNNData r trainData (fromIntegral $ length $ tdInputs trainData)
-                else
-                  evalRandIO $ buildTD trainData
+            rd <- readEx fn ex trainData
             gradient rd generateLength maxGen
+        ("rmsprop":mg:_) -> do
+            let maxGen = read mg
+            rd <- readEx fn ex trainData
+            rmsprop rd generateLength maxGen
         ("genetic":mg:_) -> do
             let maxGen = read mg
             b <- if ex
@@ -42,12 +41,20 @@ main = do
                  return $ buildExisting rnn1 trainData
               else return $ buildTD trainData
             genetic b generateLength maxGen
-        _ -> error "rnn gradient | generic"
+        _ -> error "rnn gradient <maxgen> | rmsprop <maxgen> | generic <maxgen>"
     writeFile fn $ show rnn
     where
+      readEx fn ex trainData =
+          if ex
+                then do
+                  r <- read <$> readFile fn
+                  return $ RNNData r trainData (fromIntegral $ length $ tdInputs trainData)
+                else
+                  evalRandIO $ buildTD trainData
       (train, gener) = (textToTrainData,generate)
       genStep maxGen = maxGen `div` 10
       gradient (RNNData r td _) generateLength maxGen = learnGradientDescent r td $ test generateLength maxGen
+      rmsprop (RNNData r td _) generateLength maxGen = learnRMSProp r td $ test generateLength maxGen
       genetic r generateLength maxGen = do
         fitnessList <- newIORef []
         (RNNData rnn _ _) <- runGAIO 64 0.1 r $ stopf2 generateLength maxGen fitnessList

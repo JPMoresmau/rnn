@@ -98,7 +98,7 @@ cost' sz l is os lstm = let
 --      two i o = zipWith (*) (map (\x->1 - x) o) (map (\x->1 - log x) i)
 --      three i o= zipWith (+) (one i o) (two i o)
 
--- | Gradent decent learning
+-- | Gradient descent learning
 -- The third parameter is a call back function to monitor progress and stop the learning process if needed
 learnGradientDescent :: (Monad m) => LSTMNetwork -> TrainData a Int -> (LSTMNetwork -> TrainData a Int -> Int -> m Bool) -> m LSTMNetwork
 learnGradientDescent lstm td progressF = go (toList $ toVector lstm) 0
@@ -117,3 +117,28 @@ learnGradientDescent lstm td progressF = go (toList $ toVector lstm) 0
       lis = map toList (tdInputs td)
       los = map toList (tdOutputs td)
       gf = grad (cost' (tdRecSize td) (auto le) (map (map auto) lis) (map (map auto) los))
+
+-- | RMSProp learning, as far as I can make out
+-- The third parameter is a call back function to monitor progress and stop the learning process if needed
+learnRMSProp :: (Monad m) => LSTMNetwork -> TrainData a Int -> (LSTMNetwork -> TrainData a Int -> Int -> m Bool) -> m LSTMNetwork
+learnRMSProp lstm td progressF = go ls0 (replicate myl 0) (replicate myl 0) (replicate myl 0) 0
+    where
+      go ls rgs rgs2 ugs gen = do
+        let rnn::LSTMNetwork = fromVector (tdRecSize td) (fromList ls)
+        cont <- progressF rnn td gen
+        if cont
+            then do
+                let
+                    gs= gf ls -- gradients using AD
+                    rgup = force $ zipWith (\rg g-> 0.95 * rg + 0.05 * g) rgs ls
+                    rg2up = force $ zipWith (\rg2 g-> 0.95 * rg2 + 0.05 * (g ** 2)) rgs2 ls
+                    ugup = force $ zipWith4 (\ud zg rg rg2 -> 0.9 * ud - 1e-4 * zg / sqrt(rg2 - rg ** 2 + 1e-4)) ugs gs rgup rg2up
+                    ls2 = force $ zipWith (+) ls ugup
+                go ls2 rgup rg2up ugup (gen+1)
+            else return rnn
+      le = fromIntegral $ tdRecSize td
+      lis = map toList (tdInputs td)
+      los = map toList (tdOutputs td)
+      gf = grad (cost' (tdRecSize td) (auto le) (map (map auto) lis) (map (map auto) los))
+      ls0 = toList $ toVector lstm
+      myl= length ls0
