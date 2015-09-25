@@ -18,22 +18,28 @@ library
         AI.Network.RNN
     build-depends:
         base >=4.2 && <5,
-        hmatrix >=0.16,
+        hmatrix >=0.17,
         vector -any,
         simple-genetic-algorithm-mr -any,
         deepseq -any,
         MonadRandom >=0.2,
         text -any,
         containers -any,
-        ad, parallel
+        ad -any,
+        parallel -any,
+        sdr -any,
+        binary -any,
+        bytestring -any
     hs-source-dirs: src
     other-modules:
+        AI.Network.RNN.Expr
         AI.Network.RNN.RNN
         AI.Network.RNN.Genetic
         AI.Network.RNN.Data
         AI.Network.RNN.LSTM
         AI.Network.RNN.Types
         AI.Network.RNN.Util
+    ghc-options: -fprof-auto -O2
 
 executable rnn
     main-is: main.hs
@@ -47,8 +53,12 @@ executable rnn
         MonadRandom >=0.2,
         text -any,
         containers -any,
-        directory,
-        ad, parallel
+        directory -any,
+        ad -any,
+        parallel -any,
+        sdr -any,
+        binary -any,
+        bytestring -any
     hs-source-dirs: exe
     ghc-options: -Wall -rtsopts -O2 -fprof-auto -threaded
 
@@ -69,9 +79,14 @@ test-suite rnn-test
         MonadRandom >=0.2,
         text -any,
         containers -any,
-        ad, parallel
+        ad -any,
+        parallel -any,
+        sdr -any,
+        binary -any,
+        bytestring -any
     hs-source-dirs: test src
     other-modules:
+        AI.Network.RNN.Expr
         AI.Network.RNN.LSTM
         AI.Network.RNN.RNN
         AI.Network.RNN.Data

@@ -8,78 +8,135 @@ import AI.GeneticAlgorithm.Simple
 import Control.Monad
 import Control.Monad.Random hiding (fromList)
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import Data.IORef
 import System.Directory
 --import Debug.Trace
 import System.Environment
 
+import Data.Binary
+
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
+
 import Numeric.LinearAlgebra.HMatrix
+import Numeric.AD
+
+
+
+--main::IO()
+--main = do
+--    let m :: [Expr Double] = map (\n->Var ("m" ++ show n)) [1..400]
+--        v :: [Expr Double] = map (\n->Var ("v" ++ show n)) [1..4]
+--        mycost v m = sum $ listMProd m v
+--        mygrad = grad (mycost (map auto v)) m
+--        --mygrads = gradientDescent (mycost (map auto v))  m
+--    print $ mygrad
 
 main :: IO()
 main = do
-    -- txt <- liftM (T.take 100) $ T.readFile "data/tinyshakespeare.txt"
-    let txt= "hello world!"
+    txt <- liftM (T.take 100) $ T.readFile "data/tinyshakespeare.txt"
+    let --txt= "hello world!"
         trainData = train txt
-        fn = "lstm.learn1.helloworld"
+        fn = "output/lstm.one.100"
         generateLength = min 50 (T.length txt)
-    ex <- doesFileExist fn
+    print "Text:"
+    print txt
     args <- getArgs
+    when (length args<2) $ error "rnn gradient <maxgen> | rmsprop <maxgen> | generic <maxgen>"
+    let fn2=fn++"."++head args
+    ex <- doesFileExist fn2
     rnn<-case args of
         ("gradient":mg:_) -> do
             let maxGen = read mg
-            rd <- readEx fn ex trainData
-            gradient rd generateLength maxGen
+            rd <- readEx fn2 ex trainData
+            gradient fn2 rd generateLength maxGen
         ("rmsprop":mg:_) -> do
             let maxGen = read mg
-            rd <- readEx fn ex trainData
-            rmsprop rd generateLength maxGen
+            rd <- readEx fn2 ex trainData
+            rmsprop fn2 rd generateLength maxGen
         ("genetic":mg:_) -> do
             let maxGen = read mg
             b <- if ex
                then do
-                 rnn1::LSTMNetwork <- read <$> readFile fn
+                 rnn1::LSTMNetwork <- fromVector (tdRecSize trainData) <$> decodeFile fn2
                  return $ buildExisting rnn1 trainData
-              else return $ buildTD trainData
-            genetic b generateLength maxGen
+               else return $ buildTD trainData
+--            let b = buildTDs trainData
+            genetic fn2 b generateLength maxGen
         _ -> error "rnn gradient <maxgen> | rmsprop <maxgen> | generic <maxgen>"
-    writeFile fn $ show rnn
+    encodeFile fn2 $ toVector rnn
     where
       readEx fn ex trainData =
           if ex
                 then do
-                  r <- read <$> readFile fn
-                  return $ RNNData r trainData (fromIntegral $ length $ tdInputs trainData)
+                 r::LSTMNetwork <- fromVector (tdRecSize trainData) <$> decodeFile fn
+                 return $ RNNData r trainData (fromIntegral $ length $ tdInputs trainData)
                 else
                   evalRandIO $ buildTD trainData
-      (train, gener) = (textToTrainData,generate)
-      genStep maxGen = maxGen `div` 10
-      gradient (RNNData r td _) generateLength maxGen = learnGradientDescent r td $ test generateLength maxGen
-      rmsprop (RNNData r td _) generateLength maxGen = learnRMSProp r td $ test generateLength maxGen
-      genetic r generateLength maxGen = do
+      (train, gener) = (textToTrainDataS,generateS)
+      genStep maxGen = max 1 $ maxGen `div` 10
+      gradient fn (RNNData r td _) generateLength maxGen = learnGradientDescent r td $ test fn generateLength maxGen
+      rmsprop fn (RNNData r td _) generateLength maxGen = learnRMSProp r td $ test fn generateLength maxGen
+      genetic fn r generateLength maxGen = do
         fitnessList <- newIORef []
-        (RNNData rnn _ _) <- runGAIO 64 0.1 r $ stopf2 generateLength maxGen fitnessList
+        (RNNData rnn _ _) <- runGAIO 64 0.2 r $ stopf2 fn generateLength maxGen fitnessList
         return rnn
-      test generateLength maxGen rnn td gen= do
+      test fn generateLength maxGen rnn td gen= do
         when (mod gen (genStep maxGen) == 0) $ do
             let c= cost rnn td
             print (show gen ++ ":" ++ show c)
             t <- evalRandIO $ gener (tdData td) generateLength (size $ head $ tdInputs td) rnn
             print t
+            let fn2 = fn ++ "." ++ (show gen)
+            let bs= BSL.toStrict $ encode $ toVector rnn
+            BS.writeFile fn2 bs
         return $ gen < maxGen
-      stopf2 generateLength maxGen fs rd@(RNNData rnn td _) gen = do
-        _ <- test generateLength maxGen rnn td gen
+      stopf2 fn generateLength maxGen fs rd@((RNNData rnn td _),_) gen = do
+        _ <- test fn generateLength maxGen rnn td gen
         stopf fs maxGen rd gen
 
 -- | Build LSTM network
-buildTD ::(Monad m,RandomGen g) =>  TrainData a Int -> RandT g m (RNNData LSTMNetwork Int a)
-buildTD td = buildNetworkData td lstmFullSize
+buildTD ::(Monad m,RandomGen g) =>  TrainData a -> RandT g m (RNNData LSTMNetwork a)
+buildTD td = buildNetworkData td (tdRecSize td) lstmFullSize
+
+buildTDIO ::(Monad m,RandomGen g) =>  TrainData a -> RandT g m (RNNData LSTMIO a)
+buildTDIO td =
+    let layers = 2
+        sz   = 40
+     --   tds    = TrainData (tdInputs td) (tdOutputs td) (tdRecSize td,sz,layers,tdRecSize td) (tdData td)
+     in buildNetworkData td (tdRecSize td,sz,layers,tdRecSize td) lstmioFullSize
+
+-- | Build LSTM network
+buildTDs ::(Monad m,RandomGen g) =>  TrainData a -> RandT g m (RNNData [LSTMNetwork] a)
+buildTDs td =
+    let layers = 2
+     --   tds = TrainData (tdInputs td) (tdOutputs td) (replicate layers $ tdRecSize td) (tdData td)
+    in  buildNetworkData td (replicate layers $ tdRecSize td)(sum . map lstmFullSize)
+
 
 -- | Build from existing data for genetic algorithm, to restart from where we were
-buildExisting :: (Monad m,RandomGen g) =>  LSTMNetwork -> TrainData a Int -> RandT g m (RNNData LSTMNetwork Int a)
+buildExisting :: (Monad m,RandomGen g) =>  LSTMNetwork -> TrainData a -> RandT g m (RNNData LSTMNetwork a)
 buildExisting rnn1 td@(TrainData is _ _ _) = do
-  g <- getSplit
-  let rnn2 = evalRand (mutateNetwork rnn1) g
-  return $ RNNData rnn2 td (fromIntegral $ length is)
+  -- g <- getSplit
+  --let rnn2 = evalRand (mutateNetwork rnn1) g
+  return $ RNNData rnn1 td (fromIntegral $ length is)
+
+-- | Build from existing data for genetic algorithm, to restart from where we were
+buildExistings :: (Monad m,RandomGen g) =>  [LSTMNetwork] -> TrainData a -> RandT g m (RNNData [LSTMNetwork] a)
+buildExistings rnns td@(TrainData is _ _ _) = do
+  -- g <- getSplit
+  --let tds = TrainData (tdInputs td) (tdOutputs td) (replicate (length rnns) $ tdRecSize td) (tdData td)
+  --let rnn2 = evalRand (mutateNetwork rnn1) g
+  return $ RNNData rnns td (fromIntegral $ length is)
+
+-- | Build from existing data for genetic algorithm, to restart from where we were
+buildExistingIO :: (Monad m,RandomGen g) =>  LSTMIO -> TrainData a -> RandT g m (RNNData LSTMIO a)
+buildExistingIO rnn1 td@(TrainData is _ _ _) = do
+  -- g <- getSplit
+  --let tds = TrainData (tdInputs td) (tdOutputs td) (rnnsize rnn1) (tdData td)
+  --let rnn2 = evalRand (mutateNetwork rnn1) g
+  return $ RNNData rnn1 td (fromIntegral $ length is)
 
 -- DRAGONS
 --

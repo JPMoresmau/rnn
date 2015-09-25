@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards, PatternGuards, BangPatterns #-}
@@ -111,7 +112,7 @@ outputMatrixLength RNNDimensions{..} = rnndOutput * (rnndInput + rnndInternal)
 backMatrixLength :: RNNDimensions -> Int
 backMatrixLength RNNDimensions{..} = if rnndWithBack then rnndInternal * rnndOutput else 0
 
-totalDataLength :: FullSize RNNDimensions
+totalDataLength :: FullSize RNNetwork
 totalDataLength dim@RNNDimensions{..} =
     inputMatrixLength dim + internalMatrixLength dim + outputMatrixLength dim
     + backMatrixLength dim
@@ -158,7 +159,8 @@ checkNetworkDimensions dim@RNNDimensions{..} mIn m mOut mmback st = checkDimensi
             ,(cols m /= rnndOutput,"back matrix column count doesn't match output neurons count")
             ]))
 
-instance RNNEval RNNetwork RNNDimensions where
+instance RNNEval RNNetwork where
+    type Size RNNetwork = RNNDimensions
     evalStep rnn@RNNetwork{..} iv =
         let
             sum1 = (rnnMIn #> iv) + (rnnM #> rnnState)
@@ -191,7 +193,7 @@ instance RNNEval RNNetwork RNNDimensions where
                             else Nothing
         in RNNetwork dim mIn m mOut mback v5 v6
     rnnsize = rnnDimensions
-
+    fullSize = totalDataLength . rnnDimensions
 
 
 

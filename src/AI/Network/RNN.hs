@@ -28,6 +28,9 @@ module AI.Network.RNN
 
  , LSTMNetwork
  , lstmFullSize
+ , LSTMIO
+ , LSTMList
+ , lstmioFullSize
  , lstmList
  , learnGradientDescent
  , learnRMSProp
@@ -45,6 +48,8 @@ module AI.Network.RNN
   , mutateNetwork
 
   , TrainData(..)
+
+  , listMProd
  ) where
 
 import AI.Network.RNN.Data
@@ -52,4 +57,4 @@ import AI.Network.RNN.Genetic
 import AI.Network.RNN.LSTM
 import AI.Network.RNN.RNN
 import AI.Network.RNN.Types
-
+import AI.Network.RNN.Util
