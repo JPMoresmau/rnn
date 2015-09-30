@@ -20,9 +20,6 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 
 import Numeric.LinearAlgebra.HMatrix
-import Numeric.AD
-
-
 
 --main::IO()
 --main = do
@@ -35,17 +32,17 @@ import Numeric.AD
 
 main :: IO()
 main = do
-    txt <- liftM (T.take 100) $ T.readFile "data/tinyshakespeare.txt"
-    let --txt= "hello world!"
+    --txt <- liftM (T.take 100) $ T.readFile "data/tinyshakespeare.txt"
+    let txt= "hello world!"
         trainData = train txt
-        fn = "output/lstm.one.100"
+        fn = "output/lstm.one.helloworld"
         generateLength = min 50 (T.length txt)
     print "Text:"
     print txt
     args <- getArgs
     when (length args<2) $ error "rnn gradient <maxgen> | rmsprop <maxgen> | generic <maxgen>"
     let fn2=fn++"."++head args
-    ex <- doesFileExist fn2
+    ex <- return False -- doesFileExist fn2
     rnn<-case args of
         ("gradient":mg:_) -> do
             let maxGen = read mg
@@ -66,6 +63,7 @@ main = do
             genetic fn2 b generateLength maxGen
         _ -> error "rnn gradient <maxgen> | rmsprop <maxgen> | generic <maxgen>"
     encodeFile fn2 $ toVector rnn
+    print rnn
     where
       readEx fn ex trainData =
           if ex

@@ -10,6 +10,7 @@ import AI.Network.RNN.Genetic
 import AI.Network.RNN.Data
 import AI.Network.RNN.Types
 import AI.Network.RNN.Util
+import AI.Network.RNN.Expr
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -26,6 +27,10 @@ import Data.List
 import Numeric
 
 import Debug.Trace
+
+import Numeric.AD
+import qualified Data.IntMap as I
+import Text.PrettyPrint.HughesPJClass
 
 main :: IO()
 main = defaultMain tests
@@ -89,6 +94,9 @@ tests = testGroup "Tests"
         ]
        , testGroup "LSTMIO" [
             testCase "LSTMIO basics" checkLSTMIO
+        ]
+       , testGroup "Expr" [
+            testCase "Expr basics" testExpr
         ]
      ]
     ]
@@ -312,3 +320,63 @@ testMutation f = do
     (n1::LSTMNetwork) <- evalRandIO $ randomNetwork 5 lstmFullSize
     n2 <- evalRandIO $ f n1
     toVector n1 /= toVector n2 @? "n1==n2"
+
+testExpr :: IO()
+testExpr = do
+    let
+        f :: (Num a,Floating a)=> [a] -> a
+        f= \[x,y,_] -> x * sin (x + log y)
+        i = I.fromList [(1,2::Double),(2,3),(3,4)]
+        gs0 = grad f [Var 1,Var 2,Var 3]
+        gs02 = grad f [2::Double,3,4]
+        cexpr = map (\g-> close g i) gs0
+        eexpr = map eval cexpr
+    gs02 @=? eexpr
+    let
+        f1 :: (Num a,Floating a)=> a -> [a] -> a
+        f1 = \x [y,_] -> x * sin (x + log y)
+        i1 = I.fromList [(2,3),(3,4)]
+        x1 :: Double
+        x1 = 2
+        gs1 = grad (f1 (autoEval (Lit $ Lit x1) $ I.empty)) [Var 2,Var 3]
+        gs12 = grad (f1 2) [3,4]
+        cexpr1 = map (\g-> fullSimplify $ close g i1) gs1
+        eexpr1 = map eval cexpr1
+    gs12 @=? eexpr1
+    let
+        f2 :: (Num a,Floating a)=> [a] -> [a] -> a
+        f2= \[x] [y,_] -> x * sin (x + log y)
+        i2 = I.fromList [(2,3),(3,4)]
+        --ex :: [Expr (Expr Double)]
+        --ex = map (\x->autoEval (Lit x) I.empty) [2::Double]
+        x2 :: [Double]
+        x2 = [2]
+        gs2 = grad (f2 (map (\x->autoEval (Lit $ Lit x) I.empty) x2)) [Var 2,Var 3]
+        gs22 = grad (f2 [2]) [3,4]
+        cexpr2 = map (\g-> fullSimplify $ close g i2) gs2
+        eexpr2 = map eval cexpr2
+    gs22 @=? eexpr2
+    let
+        fs = lstmFullSize 2
+        ixs = [1..fs]
+        ixsF = map fromIntegral ixs
+        gs3::[Expr Double] = grad costT $ map Var ixs
+        i3 = I.fromList $ zip ixs ixsF
+        gs32 = grad (costT) ixsF
+        cexpr3 = map (\g-> fullSimplify $ close g i3) gs3
+        eexpr3 = map eval cexpr3
+    (map (rnd 6) gs32) @=? (map (rnd 6) eexpr3)
+    where rnd n f = (fromInteger $ round $ f * (10^n)) / (10.0^^n)
+--  print gs3
+--  mapM_ (print . prettyShow . fullSimplify) (take 1 gs3)
+--  print $ length gs3
+--  print fs
+
+costT :: (Num b,Floating b,Fractional b) => [b] -> b
+costT lstm = let
+    res = snd $ mapAccumL (lstmList 2) lstm [[1,2],[2,3]]
+    in sum $ zipWith err [[3,4],[4,5]] res
+    where
+      err :: (Num b,Floating b) => [b] -> [b] -> b
+      err a b  = sum (zipWith (\c d -> (c- d)**2 ) a b)
+

@@ -29,7 +29,7 @@ library
         parallel -any,
         sdr -any,
         binary -any,
-        bytestring -any
+        bytestring -any, pretty
     hs-source-dirs: src
     other-modules:
         AI.Network.RNN.Expr
@@ -58,7 +58,7 @@ executable rnn
         parallel -any,
         sdr -any,
         binary -any,
-        bytestring -any
+        bytestring -any, pretty
     hs-source-dirs: exe
     ghc-options: -Wall -rtsopts -O2 -fprof-auto -threaded
 
@@ -83,7 +83,7 @@ test-suite rnn-test
         parallel -any,
         sdr -any,
         binary -any,
-        bytestring -any
+        bytestring -any, pretty
     hs-source-dirs: test src
     other-modules:
         AI.Network.RNN.Expr
@@ -93,4 +93,4 @@ test-suite rnn-test
         AI.Network.RNN.Genetic
         AI.Network.RNN.Util
         AI.Network.RNN.Types
-    ghc-options: -Wall -rtsopts -threaded -O2
+    ghc-options: -Wall -rtsopts -threaded -O2 -fprof-auto

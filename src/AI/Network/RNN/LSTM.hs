@@ -30,7 +30,9 @@ import Numeric.LinearAlgebra.HMatrix
 
 import AI.Network.RNN.Types
 import AI.Network.RNN.Util
+import AI.Network.RNN.Expr
 import Debug.Trace
+import qualified Data.IntMap as I
 
 import Numeric.AD
 
@@ -162,7 +164,6 @@ lstmList sz lstm is = let
     no = zipWith (*) (map sigmoid o) (map tanh ns)
     in (mW++mU++vB++ns++no,no)
 
-
 -- | Cost calculation using list representation for AD
 cost' :: (Num b,Floating b,Fractional b) => Int -> [[b]] -> [[b]] -> [b] -> b
 cost' sz is os lstm = let
@@ -203,6 +204,33 @@ learnGradientDescent lstm td progressF =  go (toList $ toVector lstm) 0
       los = map toList (tdOutputs td)
       gf = grad (cost' (tdRecSize td) (map (map auto) lis) (map (map auto) los))
       gds = gradientDescent (cost' (tdRecSize td) (map (map auto) lis) (map (map auto) los)) (toList $ toVector lstm)
+
+-- | Gradient descent learning using symbolic differentiation
+--   The goal was to calculate the derivative once and then just close and eval the result using the current data
+--   However it is much slower than normal automatic differentiation
+learnGradientDescentSym :: (Monad m) => LSTMNetwork -> TrainData a -> (LSTMNetwork -> TrainData a -> Int -> m Bool) -> m LSTMNetwork
+learnGradientDescentSym lstm td progressF =  go (toList $ toVector lstm) 0
+    where
+      go ls gen = do
+        let rnn::LSTMNetwork = fromVector (tdRecSize td) (fromList ls)
+        cont <- progressF rnn td gen
+        if cont
+            then do
+                let
+                    i = I.fromList $ zip [0..] ls
+                    cexpr = map (\g-> close g i) gf
+                    gs = map eval cexpr
+                    ls2 = zipWith (\o g->o-g*0.1) ls gs
+                go ls2 (gen+1)
+            else return rnn
+      lis = map toList (tdInputs td)
+      los = map toList (tdOutputs td)
+      ls0 = toList $ toVector lstm
+      gf = map fullSimplify $ grad (cost'
+            (tdRecSize td)
+            (map (map (\x -> autoEval (Lit $ Lit x) I.empty)) lis)
+            (map (map (\x -> autoEval (Lit $ Lit x) I.empty)) los))
+            (zipWith (\_ i->Var i) ls0 [0..])
 
 -- | RMSProp learning, as far as I can make out
 -- The third parameter is a call back function to monitor progress and stop the learning process if needed

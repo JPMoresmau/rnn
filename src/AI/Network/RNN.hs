@@ -33,6 +33,7 @@ module AI.Network.RNN
  , lstmioFullSize
  , lstmList
  , learnGradientDescent
+ , learnGradientDescentSym
  , learnRMSProp
 
   , textToTrainData
